@@ -1,0 +1,106 @@
+name: Build Gittyup win64 portable
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-win64:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set git identity
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@users.noreply.github.com"
+
+      - name: Setup MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Setup Perl
+        uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: "5.38"
+
+      - name: Install NASM and Ninja
+        shell: pwsh
+        run: |
+          choco install nasm ninja -y
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4.3.1
+        with:
+          version: "6.6.0"
+          target: "desktop"
+          host: "windows"
+          arch: "win64_msvc2019_64"
+          modules: "qtwebengine"
+          cache: true
+
+      - name: Build OpenSSL (bundled)
+        run: |
+          cd dep/openssl/openssl
+          perl Configure VC-WIN64A
+          nmake
+
+      - name: Configure CMake
+        run: |
+          mkdir -p build/release
+          cd build/release
+
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUPDATE_TRANSLATIONS=OFF \
+            -DENABLE_TESTS=OFF \
+            -DUSE_SYSTEM_QT=OFF \
+            -DUSE_SYSTEM_LIBSSH2=OFF \
+            -DUSE_BUNDLED_ZLIB=1 \
+            -DUSE_SSH:STRING=localbuild \
+            -DUSE_SYSTEM_OPENSSL=OFF \
+            -DCMAKE_C_COMPILER=cl \
+            -DCMAKE_CXX_COMPILER=cl \
+            ../..
+
+      - name: Build
+        run: |
+          cd build/release
+          ninja
+
+      - name: Stage portable files
+        run: |
+          cd build/release
+          rm -rf stage
+          cmake --install . --prefix "$PWD/stage"
+
+          # 删掉明显没必要放进便携包的符号/导入文件
+          find stage -type f \( -name '*.pdb' -o -name '*.lib' -o -name '*.exp' \) -delete
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "build/release/stage/*" `
+            -DestinationPath "build/release/Gittyup-win64-portable.zip" `
+            -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gittyup-win64-portable
+          path: build/release/Gittyup-win64-portable.zip
+          if-no-files-found: error
+          retention-days: 14
