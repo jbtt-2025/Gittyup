@@ -22,7 +22,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # 2️⃣ Set git identity
+      # 2️⃣ Set git identity for build metadata
       - name: Set git identity
         run: |
           git config --global user.name "github-actions"
@@ -40,16 +40,17 @@ jobs:
         with:
           perl-version: "5.38"
 
-      # 5️⃣ Install Perl modules required by OpenSSL (non-interactive)
-      - name: Install Perl modules required by OpenSSL
+      # 5️⃣ Install required Perl modules (non-interactive, local lib)
+      - name: Install required Perl modules
         shell: pwsh
         run: |
-          # 自动初始化 CPAN 配置
-          perl -MCPAN -e "o conf init /yes"
-          # 强制安装所需模块
-          cpan -i -f Locale::Maketext::Simple
-          cpan -i -f Params::Check
-          cpan -i -f IPC::Cmd
+          # 安装 cpanminus
+          curl -L https://cpanmin.us | perl - App::cpanminus
+          # 指定本地 lib 目录
+          $env:PERL5LIB="$PWD/perl5/lib/perl5"
+          $env:PATH="$PWD/perl5/bin;$env:PATH"
+          # 非交互安装模块
+          cpanm --local-lib="$PWD/perl5" Locale::Maketext::Simple Params::Check IPC::Cmd
 
       # 6️⃣ Install NASM and Ninja
       - name: Install NASM and Ninja
@@ -75,7 +76,7 @@ jobs:
           perl Configure VC-WIN64A
           nmake
 
-      # 9️⃣ Configure CMake
+      # 9️⃣ Configure Gittyup CMake
       - name: Configure CMake
         run: |
           mkdir -p build/release
@@ -93,7 +94,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=cl \
             ../..
 
-      # 🔟 Build
+      # 🔟 Build Gittyup
       - name: Build
         run: |
           cd build/release
@@ -106,7 +107,7 @@ jobs:
           rm -rf stage
           cmake --install . --prefix "$PWD/stage"
 
-          # 删除调试/静态文件
+          # 删除调试/静态文件减小体积
           find stage -type f \( -name '*.pdb' -o -name '*.lib' -o -name '*.exp' \) -delete
 
           # 保留必要 Qt 插件
@@ -114,12 +115,12 @@ jobs:
             find stage/plugins/ -mindepth 1 -maxdepth 1 ! -name $plugin -exec rm -rf {} +
           done
 
-          # 删除未用 Qt 模块
+          # 删除未使用 Qt 模块
           rm -rf stage/qml
           rm -rf stage/printsupport
           rm -rf stage/designer
 
-      # 1️⃣2️⃣ Create ZIP
+      # 1️⃣2️⃣ Create slim ZIP
       - name: Create ZIP
         shell: pwsh
         run: |
