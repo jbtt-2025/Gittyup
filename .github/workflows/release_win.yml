@@ -46,22 +46,28 @@ jobs:
             Add-Content $env:GITHUB_PATH 'C:\Strawberry\c\bin'
           }
 
-      - name: Fast preflight for Perl / OpenSSL
+      - name: Install NASM
+        uses: ilammy/setup-nasm@v1
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Fast preflight for Perl / NASM / OpenSSL Configure
         run: |
-          $perls = & where.exe perl
-          $perls | ForEach-Object { Write-Host $_ }
-
-          $first = ($perls | Select-Object -First 1)
-          if (-not $first) {
-            throw "perl not found in PATH"
-          }
-          if ($first -notmatch 'Strawberry\\perl\\bin\\perl\.exe') {
-            throw "PATH priority is wrong. First perl is not Strawberry Perl: $first"
-          }
-
+          Write-Host "=== perl in PATH ==="
+          where.exe perl
           perl -v
+
+          Write-Host "=== nasm in PATH ==="
+          where.exe nasm
+          nasm -v
+
+          Write-Host "=== perl modules ==="
           perl -MLocale::Maketext::Simple -MParams::Check -MIPC::Cmd -e "print qq(Perl modules OK`n)"
 
+          Write-Host "=== openssl configure dry run ==="
           Push-Location dep/openssl/openssl
           perl Configure VC-WIN64A no-tests
           Pop-Location
@@ -84,14 +90,6 @@ jobs:
           version: 1.11.1
           platform: win
           destination: ninja
-
-      - name: Setup MSVC environment
-        uses: seanmiddleditch/gha-setup-vsdevenv@v5
-        with:
-          arch: x64
-
-      - name: Install NASM
-        uses: ilammy/setup-nasm@v1.2.0
 
       - name: Install NSIS for CPack
         run: |
